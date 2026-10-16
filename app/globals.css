@@ -240,3 +240,16 @@ body {
 .live-dot {
   animation: blink 1.6s ease-in-out infinite;
 }
+
+/* Theme ripple (see ThemeToggle): replace the default cross-fade with a circular reveal of the new theme. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
