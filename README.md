@@ -60,14 +60,14 @@ All tables live in their own `templink` schema. They have RLS enabled and no acc
 
    The schema and the private `templink-files` bucket are created automatically on first request. You can apply `supabase/migrations/0001_templink.sql` yourself instead if you prefer.
 
-2. **Vercel.** Import the GitHub repo and set **Root Directory** to `templink`. Then add these environment variables:
+2. **Vercel.** Import this GitHub repo with the default settings (Next.js is detected). Then add these environment variables:
 
    | Variable | Value |
    | --- | --- |
    | `SUPABASE_URL` | `https://<ref>.supabase.co` |
    | `SUPABASE_PUBLISHABLE_KEY` | publishable / anon key (public) |
    | `SUPABASE_SECRET_KEY` | secret / service_role key |
-   | `DATABASE_URL` | transaction pooler connection string |
+   | `DATABASE_URL` | transaction pooler connection string (a dedicated role with access to the `templink` schema only is ideal) |
    | `ADMIN_PASSWORD` | password for `/admin` |
    | `SESSION_SECRET` | 32 random characters (`openssl rand -base64 32`) |
    | `CRON_SECRET` | random string; Vercel sends it to the cleanup cron |
@@ -80,7 +80,7 @@ All tables live in their own `templink` schema. They have RLS enabled and no acc
 ## Local development
 
 ```sh
-cd templink
+git clone https://github.com/fullporteverything/templink && cd templink
 npm install
 cp .env.example .env.local   # point it at a Supabase project (or a local `supabase start`)
 npm run dev                  # http://localhost:3100 — admin password defaults to "admin" in dev
