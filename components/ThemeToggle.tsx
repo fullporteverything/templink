@@ -40,9 +40,11 @@ function makeRim(x: number, y: number, r: number) {
   document.body.appendChild(rim);
 
   let raf = 0;
-  const t0 = performance.now();
-  const frame = (now: number) => {
-    const p = Math.min(1, (now - t0) / RIPPLE_MS);
+  let clock: Animation | null = null;
+  const frame = () => {
+    // Read progress from the clip animation itself so the rim never drifts from the wave.
+    const elapsed = Number(clock?.currentTime ?? 0);
+    const p = Math.min(1, Math.max(0, elapsed / RIPPLE_MS));
     const R = r * ease(p);
     const fade = p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1;
     const glow = "color-mix(in oklab, var(--accent) 45%, transparent)";
@@ -58,7 +60,10 @@ function makeRim(x: number, y: number, r: number) {
     if (p < 1) raf = requestAnimationFrame(frame);
   };
   return {
-    start: () => (raf = requestAnimationFrame(frame)),
+    start: (anim: Animation) => {
+      clock = anim;
+      raf = requestAnimationFrame(frame);
+    },
     remove: () => {
       cancelAnimationFrame(raf);
       rim.remove();
@@ -98,11 +103,11 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     const t = doc.startViewTransition(swap);
     t.ready
       .then(() => {
-        document.documentElement.animate(
+        const wave = document.documentElement.animate(
           { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
           { duration: RIPPLE_MS, easing: EASE_CSS, pseudoElement: "::view-transition-new(root)" },
         );
-        rim.start();
+        rim.start(wave);
       })
       .catch(rim.remove);
     t.finished.then(rim.remove, rim.remove);
