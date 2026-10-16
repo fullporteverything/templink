@@ -39,7 +39,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
               </span>
             )}
             <ThemeToggle />
-            <Link href="/" className="btn-ink btn-sm h-9">
+            <Link href="/send" className="btn-ink btn-sm h-9">
               Send files
             </Link>
           </div>
@@ -56,7 +56,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           </div>
           <div className="space-y-2">
             <p className="eyebrow text-faint">Product</p>
-            <Link href="/" className="block text-muted hover:text-fg">
+            <Link href="/send" className="block text-muted hover:text-fg">
               Send files
             </Link>
             <Link href="/#how" className="block text-muted hover:text-fg">

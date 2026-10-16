@@ -42,7 +42,7 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
           </span>
           <h1 className="display mt-6 text-4xl">{title}</h1>
           <p className="mt-3 text-muted">{body}</p>
-          <Link href="/" className="btn-ink mt-8 h-11 px-5">
+          <Link href="/send" className="btn-ink mt-8 h-11 px-5">
             Send your own files
           </Link>
         </div>

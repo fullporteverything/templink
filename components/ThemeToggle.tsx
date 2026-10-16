@@ -4,21 +4,18 @@ import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { THEME_KEY as KEY } from "@/lib/theme";
 
-type Mode = "system" | "light" | "dark";
+type Mode = "light" | "dark";
 
 function apply(mode: Mode) {
-  const el = document.documentElement;
-  if (mode === "system") delete el.dataset.theme;
-  else el.dataset.theme = mode;
+  document.documentElement.dataset.theme = mode;
   try {
-    if (mode === "system") localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, mode);
+    localStorage.setItem(KEY, mode);
   } catch {
     /* storage unavailable: the choice lasts for this page only */
   }
 }
 
-const RIPPLE_MS = 850;
+const RIPPLE_MS = 650;
 // easeOutCubic, used for both the clip and the rim so they stay locked together.
 const EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)";
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -71,28 +68,54 @@ function makeRim(x: number, y: number, r: number) {
   };
 }
 
+type Transition = { ready: Promise<void>; finished: Promise<void>; skipTransition: () => void };
+type Doc = Document & { startViewTransition?: (cb: () => void) => Transition };
+
+/** The theme the visitor is actually looking at right now. */
+function shownTheme(): "light" | "dark" {
+  const t = document.documentElement.dataset.theme;
+  if (t === "light" || t === "dark") return t;
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+// Only one ripple at a time; a new click finishes the old one instantly and starts fresh.
+let running: { t: Transition; rim: ReturnType<typeof makeRim> } | null = null;
+
 export default function ThemeToggle({ className = "" }: { className?: string }) {
-  const [mode, setMode] = useState<Mode>("system");
+  const [shown, setShown] = useState<"light" | "dark">("light");
+
   useEffect(() => {
-    const t = document.documentElement.dataset.theme;
-    setMode(t === "light" || t === "dark" ? t : "system");
+    const sync = () => setShown(shownTheme());
+    sync();
+    // Keep every toggle on the page (and system changes) in step.
+    const mo = new MutationObserver(sync);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", sync);
+    return () => {
+      mo.disconnect();
+      mq.removeEventListener("change", sync);
+    };
   }, []);
 
-  const next: Record<Mode, Mode> = { system: "light", light: "dark", dark: "system" };
-  const label = { system: "Theme: system", light: "Theme: light", dark: "Theme: dark" }[mode];
+  const label = shown === "dark" ? "Switch to light theme" : "Switch to dark theme";
 
   function change(e: React.MouseEvent<HTMLButtonElement>) {
-    const m = next[mode];
+    // Always flip what's on screen, so every click visibly does something.
+    const target: Mode = shownTheme() === "dark" ? "light" : "dark";
     const swap = () => {
-      flushSync(() => setMode(m));
-      apply(m);
+      apply(target);
+      flushSync(() => setShown(target));
     };
 
-    // Ripple the new theme out from the button, poured across the window (View Transitions API).
-    const doc = document as Document & {
-      startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> };
-    };
+    const doc = document as Doc;
     if (!doc.startViewTransition) return swap();
+
+    if (running) {
+      running.t.skipTransition();
+      running.rim.remove();
+      running = null;
+    }
 
     const box = e.currentTarget.getBoundingClientRect();
     const x = box.left + box.width / 2;
@@ -101,6 +124,8 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
 
     const rim = makeRim(x, y, r);
     const t = doc.startViewTransition(swap);
+    const mine = { t, rim };
+    running = mine;
     t.ready
       .then(() => {
         const wave = document.documentElement.animate(
@@ -110,30 +135,28 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
         rim.start(wave);
       })
       .catch(rim.remove);
-    t.finished.then(rim.remove, rim.remove);
+    t.finished.finally(() => {
+      rim.remove();
+      if (running === mine) running = null;
+    });
   }
 
   return (
     <button
       type="button"
       onClick={change}
-      className={`grid size-9 place-items-center rounded-lg border border-line bg-surface text-muted transition hover:text-fg ${className}`}
+      className={`grid size-9 place-items-center rounded-lg border border-line bg-surface text-muted transition hover:text-fg active:scale-90 ${className}`}
       aria-label={label}
       title={label}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-        {mode === "light" ? (
+        {shown === "light" ? (
           <>
             <circle cx="12" cy="12" r="4" />
             <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" strokeLinecap="round" />
           </>
-        ) : mode === "dark" ? (
-          <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" strokeLinejoin="round" />
         ) : (
-          <>
-            <circle cx="12" cy="12" r="8.5" />
-            <path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor" stroke="none" />
-          </>
+          <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" strokeLinejoin="round" />
         )}
       </svg>
     </button>

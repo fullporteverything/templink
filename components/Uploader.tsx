@@ -81,7 +81,11 @@ function eta(seconds: number) {
   return `${Math.floor(m / 60)}h ${m % 60}m left`;
 }
 
-export default function Uploader({ limits }: { limits: Limits }) {
+/**
+ * `pill` is the compact call to action on the homepage; `panel` is the roomy drop zone used on
+ * the dedicated /send page. Both share the same upload flow once files are picked.
+ */
+export default function Uploader({ limits, variant = "pill" }: { limits: Limits; variant?: "pill" | "panel" }) {
   const [files, setFiles] = useState<Picked[]>([]);
   const [dragDepth, setDragDepth] = useState(0);
   const [expiry, setExpiry] = useState(limits.defaultExpiryHours);
@@ -250,6 +254,8 @@ export default function Uploader({ limits }: { limits: Limits }) {
       };
       saveRecent(d);
       setRecent(loadRecent());
+      // Let the live globe/ticker refresh now so the sender sees their own ping.
+      window.dispatchEvent(new Event("templink:activity"));
       setDone(d);
       setPhase("done");
     } catch (e) {
@@ -370,6 +376,49 @@ export default function Uploader({ limits }: { limits: Limits }) {
         <button className="btn-ghost mt-6 w-full" onClick={() => abortRef.current?.abort()}>
           Cancel
         </button>
+      </div>
+    );
+  }
+
+  // Nothing picked yet, /send page: a big drop zone.
+  if (!files.length && variant === "panel") {
+    const dragging = dragDepth > 0;
+    return (
+      <div className="space-y-4">
+        {fileInput}
+        <button
+          onClick={() => inputRef.current?.click()}
+          className={`group relative grid min-h-[22rem] w-full place-items-center overflow-hidden rounded-3xl border-2 border-dashed p-8 text-center transition-colors duration-300 ${
+            dragging ? "border-accent bg-accent-soft/60" : "border-line bg-surface hover:border-accent/50"
+          }`}
+        >
+          <span className="dot-grid pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(circle_at_center,#000,transparent_70%)]" />
+          <span className="relative">
+            <span
+              className={`mx-auto grid size-20 place-items-center rounded-2xl bg-accent text-accent-fg shadow-[0_18px_40px_-14px_var(--accent)] transition duration-300 ${
+                dragging ? "scale-110 rotate-6" : "group-hover:-translate-y-1"
+              }`}
+            >
+              <IconUpload size={32} />
+            </span>
+            <span className="mt-6 block text-2xl font-semibold tracking-tight">
+              {dragging ? "Let go to add them" : "Drop files to start a transfer"}
+            </span>
+            <span className="mt-2 block text-sm text-muted">
+              or <span className="font-medium text-accent underline-offset-4 group-hover:underline">browse your device</span>, or
+              paste with <kbd className="rounded border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[11px]">Ctrl/⌘ V</kbd>
+            </span>
+            <span className="mt-6 flex flex-wrap justify-center gap-2 font-mono text-[11px] text-faint">
+              <span className="rounded-full border border-line px-2.5 py-1">{formatBytes(maxBytes)} per file</span>
+              <span className="rounded-full border border-line px-2.5 py-1">up to {limits.maxFilesPerLink} files</span>
+              <span className="rounded-full border border-line px-2.5 py-1">
+                expires in {expiryLabel(Math.max(...limits.expiryOptionsHours))} max
+              </span>
+            </span>
+          </span>
+        </button>
+        {error && <p className="rounded-lg bg-bad/10 px-3 py-2 text-sm text-bad">{error}</p>}
+        {recent.length > 0 && <RecentLinks recent={recent} />}
       </div>
     );
   }

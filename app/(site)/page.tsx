@@ -122,7 +122,7 @@ export default async function Home() {
           <h2 className="display text-4xl sm:text-5xl">
             Got something to send? <span className="text-faint">It takes seconds.</span>
           </h2>
-          <Link href="/" className="btn-ink h-12 px-6 text-base">
+          <Link href="/send" className="btn-ink h-12 px-6 text-base">
             Send files now
           </Link>
         </div>

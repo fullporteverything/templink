@@ -5,6 +5,6 @@ import { getLive } from "@/lib/live";
 export async function GET() {
   const data = await getLive();
   return NextResponse.json(data, {
-    headers: { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=60" },
+    headers: { "Cache-Control": "public, s-maxage=5, stale-while-revalidate=30" },
   });
 }

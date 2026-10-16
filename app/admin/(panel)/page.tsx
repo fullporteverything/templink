@@ -66,7 +66,7 @@ export default async function Dashboard() {
 
       <section className="card mt-3 grid overflow-hidden lg:grid-cols-[1fr_1.1fr]">
         <div className="relative h-72 border-b border-line bg-bg lg:h-auto lg:min-h-80 lg:border-r lg:border-b-0">
-          <Globe arcs={live.arcs} points={live.points} className="absolute inset-0 size-full" />
+          <Globe arcs={live.arcs} spots={live.spots} className="absolute inset-0 size-full" />
         </div>
         <div className="flex min-w-0 flex-col">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">

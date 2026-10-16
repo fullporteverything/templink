@@ -30,7 +30,12 @@ function toVec([lat, lon]: LatLon): [number, number, number] {
   return [Math.cos(p) * Math.sin(l), Math.sin(p), Math.cos(p) * Math.cos(l)];
 }
 
-type Flight = { a: number[]; b: number[]; omega: number; lift: number; born: number; life: number };
+type Flight = { a: number[]; b: number[]; omega: number; lift: number; born: number; life: number; live?: boolean };
+/** A place people have sent from or downloaded to; `n` is how many times. */
+export type Spot = { at: LatLon; n: number };
+/** A recent transfer. New keys arriving from the live feed ping the globe as they happen. */
+export type GlobeEvent = { key: string; from?: LatLon | null; to?: LatLon | null };
+type Ping = { v: number[]; born: number };
 
 function readColors(el: HTMLElement) {
   const cs = getComputedStyle(el);
@@ -45,25 +50,28 @@ function readColors(el: HTMLElement) {
 }
 
 /**
- * Dot-matrix globe drawn on a 2D canvas. Shows `arcs` as animated flights (falls back to
- * ambient routes), pulses `points`, rotates slowly, and can be dragged. Always animates, by design.
+ * Dot-matrix globe drawn on a 2D canvas. Real `arcs` fly alongside ambient routes, taking over
+ * as traffic grows; every `spot` that has ever sent or received stays lit (brighter the busier it
+ * is); new `events` from the live feed ping the moment they arrive. Always animates, by design.
  */
 export default function Globe({
   arcs = [],
-  points = [],
+  spots = [],
+  events = [],
   focus = [25, -40],
   className = "",
   speed = 1,
 }: {
   arcs?: Arc[];
-  points?: LatLon[];
+  spots?: Spot[];
+  events?: GlobeEvent[];
   focus?: LatLon;
   className?: string;
   speed?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const dataRef = useRef({ arcs, points });
-  dataRef.current = { arcs, points };
+  const dataRef = useRef({ arcs, spots, events });
+  dataRef.current = { arcs, spots, events };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -85,6 +93,10 @@ export default function Globe({
     let flights: Flight[] = [];
     let nextSpawn = 0;
     let arcCursor = 0;
+    let ambientCursor = 0;
+    let pings: Ping[] = [];
+    // Events already on the page at load are history, not news; only later ones ping.
+    const seen = new Set(dataRef.current.events.map((e) => e.key));
 
     const resize = () => {
       const r = canvas.getBoundingClientRect();
@@ -95,16 +107,32 @@ export default function Globe({
       canvas.height = Math.round(h * dpr);
     };
 
-    const spawn = (time: number) => {
-      const real = dataRef.current.arcs;
-      const pool = real.length ? real : AMBIENT;
-      const arc = pool[arcCursor++ % pool.length];
+    const launch = (arc: Arc, time: number, live = false) => {
       const a = toVec(arc.from);
       const b = toVec(arc.to);
       const dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
       const omega = Math.acos(dot);
       if (omega < 0.01) return;
-      flights.push({ a, b, omega, lift: 0.08 + 0.32 * (omega / Math.PI), born: time, life: 2600 + omega * 900 });
+      flights.push({ a, b, omega, lift: 0.08 + 0.32 * (omega / Math.PI), born: time, life: (live ? 3400 : 2600) + omega * 900, live });
+    };
+
+    // Ambient routes keep the globe alive on day one; real transfers take a bigger share as they grow.
+    const spawn = (time: number) => {
+      const real = dataRef.current.arcs;
+      const realShare = Math.min(0.85, real.length / (real.length + 6));
+      if (real.length && Math.random() < realShare) launch(real[arcCursor++ % real.length], time);
+      else launch(AMBIENT[ambientCursor++ % AMBIENT.length], time);
+    };
+
+    // Brand-new activity from the live feed: fly it now and ping where it happened.
+    const absorbEvents = (time: number) => {
+      for (const e of dataRef.current.events) {
+        if (seen.has(e.key)) continue;
+        seen.add(e.key);
+        if (e.from && e.to) launch({ from: e.from, to: e.to }, time, true);
+        const where = e.to ?? e.from;
+        if (where) pings.push({ v: toVec(where), born: time + (e.from && e.to ? 2000 : 0) });
+      }
     };
 
     // Rotate a unit-sphere point by the current yaw/pitch, then project orthographically.
@@ -171,16 +199,49 @@ export default function Globe({
       }
       ctx.globalAlpha = 1;
 
-      // Upload locations: soft pulsing points.
+      // Every place that has used the site stays lit; busier places glow bigger and brighter.
       ctx.fillStyle = colors.accent;
-      const pulse = (Math.sin(time / 500) + 1) / 2;
-      for (const p of dataRef.current.points.slice(0, 40)) {
-        const v = toVec(p);
+      for (const spot of dataRef.current.spots) {
+        const v = toVec(spot.at);
         const [x, y, z] = project(v[0], v[1], v[2], cY, sY, cP, sP);
         if (z <= 0) continue;
-        ctx.globalAlpha = 0.35 + 0.4 * z;
+        const twinkle = 0.75 + 0.25 * Math.sin(time / 650 + spot.at[0] * 3.1 + spot.at[1] * 1.7);
+        const size = 1.5 + Math.min(4, Math.log2(1 + spot.n) * 0.85);
+        const sx = cx + x * R;
+        const sy = cyc - y * R;
+        ctx.globalAlpha = (0.12 + 0.18 * z) * twinkle;
         ctx.beginPath();
-        ctx.arc(cx + x * R, cyc - y * R, 2 + pulse * 1.2, 0, Math.PI * 2);
+        ctx.arc(sx, sy, size * 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = (0.45 + 0.5 * z) * twinkle;
+        ctx.beginPath();
+        ctx.arc(sx, sy, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Live pings: rings ripple out from fresh activity.
+      ctx.strokeStyle = colors.accent;
+      pings = pings.filter((p) => time - p.born < 2400);
+      for (const p of pings) {
+        const age = (time - p.born) / 2400;
+        if (age < 0) continue;
+        const [x, y, z] = project(p.v[0], p.v[1], p.v[2], cY, sY, cP, sP);
+        if (z <= 0) continue;
+        const sx = cx + x * R;
+        const sy = cyc - y * R;
+        for (const lag of [0, 0.22, 0.44]) {
+          const k = (age - lag) / (1 - lag);
+          if (k <= 0 || k >= 1) continue;
+          ctx.globalAlpha = (1 - k) * 0.9;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 3 + k * 30, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1 - age;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
@@ -205,7 +266,7 @@ export default function Globe({
           const sy = cyc - y * R;
           if (prev && !hidden) {
             ctx.globalAlpha = fade * (0.25 + (0.75 * i) / steps);
-            ctx.lineWidth = 1.6;
+            ctx.lineWidth = f.live ? 2.4 : 1.6;
             ctx.beginPath();
             ctx.moveTo(prev[0], prev[1]);
             ctx.lineTo(sx, sy);
@@ -245,6 +306,7 @@ export default function Globe({
         yaw += velocity;
         velocity += (0.0011 * speed - velocity) * 0.02; // ease back to cruising speed after a fling
       }
+      absorbEvents(time);
       if (time >= nextSpawn) {
         spawn(time);
         nextSpawn = time + 650 + Math.random() * 500;

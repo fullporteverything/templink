@@ -7,7 +7,14 @@ import { useLive } from "./LiveContext";
 
 export function LiveGlobe({ className }: { className?: string }) {
   const live = useLive();
-  return <Globe arcs={live.arcs} points={live.points} className={className} />;
+  return (
+    <Globe
+      arcs={live.arcs}
+      spots={live.spots}
+      events={live.events.map((e) => ({ key: e.key, from: e.fromAt, to: e.toAt }))}
+      className={className}
+    />
+  );
 }
 
 function ago(ts: number, now: number) {

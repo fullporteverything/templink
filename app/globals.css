@@ -253,6 +253,11 @@ body {
 ::view-transition-new(root) {
   z-index: 2;
 }
+/* Let clicks fall through the transition overlay, so the toggle stays clickable mid-ripple. */
+::view-transition {
+  pointer-events: none;
+}
+
 /* The rim layer is live-drawn by ThemeToggle; show only its live image, no cross-fade. */
 ::view-transition-old(theme-rim) {
   display: none;

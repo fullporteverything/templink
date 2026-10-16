@@ -10,6 +10,8 @@ export type LiveEvent = {
   from: string | null;
   to: string | null;
   at: number;
+  fromAt: [number, number] | null;
+  toAt: [number, number] | null;
 };
 
 export type LiveData = {
@@ -17,7 +19,8 @@ export type LiveData = {
   counters: { bytes: number; files: number; downloads: number; countries: number };
   events: LiveEvent[];
   arcs: { from: [number, number]; to: [number, number] }[];
-  points: [number, number][];
+  /** Every place that has uploaded or downloaded, with how often. Grows as the site is used. */
+  spots: { at: [number, number]; n: number }[];
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -37,7 +40,7 @@ const KIND_LABEL: Record<string, string> = {
  */
 export async function getLive(): Promise<LiveData> {
   const t = now();
-  const [liveLinks, totals, downloads, countries, dlRows, upRows] = await Promise.all([
+  const [liveLinks, totals, downloads, countries, dlRows, upRows, spotRows] = await Promise.all([
     count("SELECT COUNT(*) AS n FROM templink.collections WHERE status = 'active' AND expires_at > ?", t),
     one<{ bytes: number | null; files: number | null }>(
       "SELECT SUM(total_size)::float8 AS bytes, SUM(file_count)::float8 AS files FROM templink.collections WHERE status <> 'uploading'",
@@ -69,7 +72,7 @@ export async function getLive(): Promise<LiveData> {
        FROM templink.downloads d
        JOIN templink.collections c ON c.id = d.collection_id
        LEFT JOIN templink.files f ON f.id = d.file_id
-       ORDER BY d.created_at DESC LIMIT 40`,
+       ORDER BY d.created_at DESC LIMIT 60`,
     ),
     all<{
       id: string;
@@ -88,6 +91,15 @@ export async function getLive(): Promise<LiveData> {
        WHERE c.status <> 'uploading'
        ORDER BY c.created_at DESC LIMIT 20`,
     ),
+    all<{ lat: number; lon: number; n: number }>(
+      `SELECT lat, lon, SUM(n)::float8 AS n FROM (
+         SELECT geo_lat AS lat, geo_lon AS lon, COUNT(*) AS n FROM templink.collections
+         WHERE geo_lat IS NOT NULL AND geo_lon IS NOT NULL AND status <> 'uploading' GROUP BY 1, 2
+         UNION ALL
+         SELECT geo_lat, geo_lon, COUNT(*) FROM templink.downloads
+         WHERE geo_lat IS NOT NULL AND geo_lon IS NOT NULL GROUP BY 1, 2
+       ) x GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 400`,
+    ),
   ]);
 
   const label = (name: string | null, mime: string | null, n: number) =>
@@ -102,6 +114,8 @@ export async function getLive(): Promise<LiveData> {
       from: d.c_city,
       to: d.d_city,
       at: d.created_at,
+      fromAt: d.c_lat != null && d.c_lon != null ? ([d.c_lat, d.c_lon] as [number, number]) : null,
+      toAt: d.d_lat != null && d.d_lon != null ? ([d.d_lat, d.d_lon] as [number, number]) : null,
     })),
     ...upRows.slice(0, 12).map((c) => ({
       key: `u${c.id}`,
@@ -111,6 +125,8 @@ export async function getLive(): Promise<LiveData> {
       from: c.geo_city,
       to: null,
       at: c.created_at,
+      fromAt: c.geo_lat != null && c.geo_lon != null ? ([c.geo_lat, c.geo_lon] as [number, number]) : null,
+      toAt: null,
     })),
   ]
     .sort((a, b) => b.at - a.at)
@@ -121,13 +137,13 @@ export async function getLive(): Promise<LiveData> {
     .filter((d) => has(d.c_lat, d.c_lon) && has(d.d_lat, d.d_lon))
     .filter((d) => d.c_lat !== d.d_lat || d.c_lon !== d.d_lon)
     .map((d) => ({ from: [d.c_lat!, d.c_lon!] as [number, number], to: [d.d_lat!, d.d_lon!] as [number, number] }));
-  const points = upRows.filter((c) => has(c.geo_lat, c.geo_lon)).map((c) => [c.geo_lat!, c.geo_lon!] as [number, number]);
+  const spots = spotRows.map((r) => ({ at: [r.lat, r.lon] as [number, number], n: r.n }));
 
   return {
     liveLinks,
     counters: { bytes: totals?.bytes ?? 0, files: totals?.files ?? 0, downloads, countries },
     events,
     arcs,
-    points,
+    spots,
   };
 }
