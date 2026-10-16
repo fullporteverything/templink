@@ -30,17 +30,22 @@ const ACTIVITY_LABEL: Record<Activity["type"], string> = {
 
 export default async function ContactDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const contact = one<Contact>("SELECT * FROM contacts WHERE id = ?", Number(id));
+  const cid = Number(id);
+  if (!Number.isSafeInteger(cid)) notFound();
+  const contact = await one<Contact>("SELECT * FROM templink.contacts WHERE id = ?", cid);
   if (!contact) notFound();
-  const activities = all<Activity>("SELECT * FROM activities WHERE contact_id = ? ORDER BY created_at DESC, id DESC", contact.id);
-  const links = all<Collection>(
-    "SELECT * FROM collections WHERE contact_id = ? AND status != 'uploading' ORDER BY created_at DESC LIMIT 50",
-    contact.id,
-  );
-  const totals = one<{ n: number; bytes: number | null; dls: number | null }>(
-    "SELECT COUNT(*) AS n, SUM(total_size) AS bytes, SUM(download_count) AS dls FROM collections WHERE contact_id = ? AND status != 'uploading'",
-    contact.id,
-  );
+  const [activities, links, totals] = await Promise.all([
+    all<Activity>("SELECT * FROM templink.activities WHERE contact_id = ? ORDER BY created_at DESC, id DESC", contact.id),
+    all<Collection>(
+      "SELECT * FROM templink.collections WHERE contact_id = ? AND status != 'uploading' ORDER BY created_at DESC LIMIT 50",
+      contact.id,
+    ),
+    one<{ n: number; bytes: number | null; dls: number | null }>(
+      `SELECT COUNT(*) AS n, SUM(total_size)::float8 AS bytes, SUM(download_count)::float8 AS dls
+       FROM templink.collections WHERE contact_id = ? AND status != 'uploading'`,
+      contact.id,
+    ),
+  ]);
   const t = now();
 
   return (

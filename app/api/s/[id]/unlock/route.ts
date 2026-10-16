@@ -1,29 +1,28 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { unlockCookieName } from "@/lib/auth";
+import { clientIp, unlockCookieName } from "@/lib/auth";
 import { getCollection } from "@/lib/collections";
-import { sign, verifyPassword } from "@/lib/crypto";
-
-const attempts = new Map<string, { n: number; until: number }>();
+import { hashIp, sign, verifyPassword } from "@/lib/crypto";
+import { clearHits, hit, overLimit } from "@/lib/ratelimit";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const c = getCollection(id);
+  const c = await getCollection(id);
   if (!c?.password_hash) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  const a = attempts.get(id);
-  if (a && a.n >= 10 && a.until > Date.now()) {
+  // Per link and per visitor, so one person can't lock everyone else out of a link.
+  const key = `unlock:${id}:${hashIp(await clientIp())}`;
+  if (await overLimit(key, 10, 10 * 60_000)) {
     return NextResponse.json({ error: "Too many attempts. Wait a few minutes." }, { status: 429 });
   }
 
   const { password } = (await req.json().catch(() => ({}))) as { password?: string };
   if (typeof password !== "string" || !verifyPassword(password, c.password_hash)) {
-    const cur = a && a.until > Date.now() ? a : { n: 0, until: Date.now() + 5 * 60_000 };
-    attempts.set(id, { n: cur.n + 1, until: cur.until });
+    await hit(key);
     return NextResponse.json({ error: "Wrong password." }, { status: 401 });
   }
 
-  attempts.delete(id);
+  await clearHits(key);
   (await cookies()).set(unlockCookieName(id), sign(`unlock:${id}`), {
     httpOnly: true,
     sameSite: "lax",

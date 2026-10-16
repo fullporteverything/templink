@@ -1,65 +1,69 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { after } from "next/server";
 import { BarChart } from "@/components/admin/BarChart";
 import { Avatar, Badge, Empty, PageHeader, Stat } from "@/components/admin/ui";
 import { storageUsed, sweepExpired } from "@/lib/collections";
-import { all, Collection, Contact, Message, now, one } from "@/lib/db";
+import { all, Collection, Contact, count, Message, now, one } from "@/lib/db";
 import { formatBytes, formatMoney, timeAgo } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 const DAY = 86_400_000;
-const count = (sql: string, ...p: number[]) => one<{ n: number }>(sql, ...p)?.n ?? 0;
-
-function daily(table: "collections" | "downloads", days: number) {
+async function daily(table: "collections" | "downloads", days: number) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const from = start.getTime() - (days - 1) * DAY;
-  const rows = all<{ created_at: number }>(
-    `SELECT created_at FROM ${table} WHERE created_at >= ?${table === "collections" ? " AND status != 'uploading'" : ""}`,
+  // Bucket in SQL so we only pull one row per day.
+  const rows = await all<{ i: number; n: number }>(
+    `SELECT ((created_at - ?) / ?)::int AS i, COUNT(*) AS n FROM templink.${table}
+     WHERE created_at >= ?${table === "collections" ? " AND status != 'uploading'" : ""} GROUP BY 1`,
+    from,
+    DAY,
     from,
   );
   const buckets = Array.from({ length: days }, (_, i) => ({
     label: new Date(from + i * DAY).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
     value: 0,
   }));
-  for (const r of rows) {
-    const i = Math.floor((r.created_at - from) / DAY);
-    if (i >= 0 && i < days) buckets[i].value++;
-  }
+  for (const r of rows) if (r.i >= 0 && r.i < days) buckets[r.i].value = r.n;
   return buckets;
 }
 
-export default function Dashboard() {
-  sweepExpired();
+export default async function Dashboard() {
+  after(() => sweepExpired().catch(() => {}));
   const t = now();
-  const active = count("SELECT COUNT(*) AS n FROM collections WHERE status = 'active' AND expires_at > ?", t);
-  const links30 = count("SELECT COUNT(*) AS n FROM collections WHERE created_at > ? AND status != 'uploading'", t - 30 * DAY);
-  const dl24 = count("SELECT COUNT(*) AS n FROM downloads WHERE created_at > ?", t - DAY);
-  const dl30 = count("SELECT COUNT(*) AS n FROM downloads WHERE created_at > ?", t - 30 * DAY);
-  const contacts = count("SELECT COUNT(*) AS n FROM contacts");
-  const newContacts = count("SELECT COUNT(*) AS n FROM contacts WHERE created_at > ?", t - 7 * DAY);
-  const pipeline =
-    one<{ v: number | null }>("SELECT SUM(value_cents) AS v FROM contacts WHERE status IN ('lead','qualified')")?.v ?? 0;
-  const openMsgs = all<Message>("SELECT * FROM messages WHERE status = 'open' ORDER BY created_at DESC LIMIT 5");
-  const recent = all<Collection>(
-    "SELECT * FROM collections WHERE status != 'uploading' ORDER BY created_at DESC LIMIT 6",
-  );
-  const recentContacts = all<Contact>("SELECT * FROM contacts ORDER BY COALESCE(last_seen_at, created_at) DESC LIMIT 5");
+  const [active, links30, dl24, dl30, contacts, newContacts, pipelineRow, openMsgs, recent, recentContacts, used, linksDaily, dlDaily] =
+    await Promise.all([
+      count("SELECT COUNT(*) AS n FROM templink.collections WHERE status = 'active' AND expires_at > ?", t),
+      count("SELECT COUNT(*) AS n FROM templink.collections WHERE created_at > ? AND status != 'uploading'", t - 30 * DAY),
+      count("SELECT COUNT(*) AS n FROM templink.downloads WHERE created_at > ?", t - DAY),
+      count("SELECT COUNT(*) AS n FROM templink.downloads WHERE created_at > ?", t - 30 * DAY),
+      count("SELECT COUNT(*) AS n FROM templink.contacts"),
+      count("SELECT COUNT(*) AS n FROM templink.contacts WHERE created_at > ?", t - 7 * DAY),
+      one<{ v: number | null }>("SELECT SUM(value_cents)::float8 AS v FROM templink.contacts WHERE status IN ('lead','qualified')"),
+      all<Message>("SELECT * FROM templink.messages WHERE status = 'open' ORDER BY created_at DESC LIMIT 5"),
+      all<Collection>("SELECT * FROM templink.collections WHERE status != 'uploading' ORDER BY created_at DESC LIMIT 6"),
+      all<Contact>("SELECT * FROM templink.contacts ORDER BY COALESCE(last_seen_at, created_at) DESC LIMIT 5"),
+      storageUsed(),
+      daily("collections", 14),
+      daily("downloads", 14),
+    ]);
+  const pipeline = pipelineRow?.v ?? 0;
 
   return (
     <>
       <PageHeader title="Dashboard" subtitle="What's happening across your links and customers." />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Live links" value={active} hint={`${links30} created in 30 days`} />
-        <Stat label="Storage in use" value={formatBytes(storageUsed())} hint="Freed automatically on expiry" />
+        <Stat label="Storage in use" value={formatBytes(used)} hint="Freed automatically on expiry" />
         <Stat label="Downloads, 24 h" value={dl24} hint={`${dl30} in 30 days`} />
         <Stat label="Contacts" value={contacts} hint={`${newContacts} new this week · ${formatMoney(pipeline)} open pipeline`} />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <BarChart title="Links created per day" unit="links" data={daily("collections", 14)} />
-        <BarChart title="Downloads per day" unit="downloads" data={daily("downloads", 14)} />
+        <BarChart title="Links created per day" unit="links" data={linksDaily} />
+        <BarChart title="Downloads per day" unit="downloads" data={dlDaily} />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">

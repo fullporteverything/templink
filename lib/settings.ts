@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { all, run } from "./db";
 
 export type Settings = {
@@ -16,7 +17,9 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   siteName: process.env.SITE_NAME || "Templink",
   tagline: "Send files with a link that expires.",
-  maxFileSizeMb: 2048,
+  // Supabase's free plan caps uploads at 50 MB per file; raise this after raising the
+  // project's global file size limit (Pro plan) in Storage settings.
+  maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB) || 50,
   maxFilesPerLink: 50,
   uploadsPerIpPerDay: 20,
   expiryOptionsHours: [1, 24, 72, 168],
@@ -25,8 +28,9 @@ export const DEFAULT_SETTINGS: Settings = {
   announcement: "",
 };
 
-export function getSettings(): Settings {
-  const rows = all<{ key: string; value: string }>("SELECT key, value FROM settings");
+/** Read once per request. */
+export const getSettings = cache(async (): Promise<Settings> => {
+  const rows = await all<{ key: string; value: string }>("SELECT key, value FROM templink.settings");
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const r of rows) {
     if (r.key in out) {
@@ -38,13 +42,13 @@ export function getSettings(): Settings {
     }
   }
   return out as Settings;
-}
+});
 
-export function saveSettings(patch: Partial<Settings>) {
+export async function saveSettings(patch: Partial<Settings>) {
   for (const [key, value] of Object.entries(patch)) {
     if (!(key in DEFAULT_SETTINGS) || value === undefined) continue;
-    run(
-      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    await run(
+      "INSERT INTO templink.settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
       key,
       JSON.stringify(value),
     );

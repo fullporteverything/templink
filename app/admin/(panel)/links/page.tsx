@@ -3,7 +3,7 @@ import Link from "next/link";
 import { runCleanup } from "../../actions";
 import { Badge, Empty, PageHeader, SearchBox, Tabs } from "@/components/admin/ui";
 import { IconLock } from "@/components/icons";
-import { all, Collection, now, one } from "@/lib/db";
+import { all, Collection, count, now } from "@/lib/db";
 import { formatBytes, formatDuration, timeAgo } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Links & files" };
@@ -23,18 +23,15 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
   const t = now();
 
   const where = (cond: string) => cond.replaceAll("$now", String(t));
-  const counts = Object.fromEntries(
-    (Object.keys(FILTERS) as Filter[]).map((k) => [
-      k,
-      one<{ n: number }>(`SELECT COUNT(*) AS n FROM collections c WHERE ${where(FILTERS[k])}`)?.n ?? 0,
-    ]),
-  ) as Record<Filter, number>;
+  const keys = Object.keys(FILTERS) as Filter[];
+  const totals = await Promise.all(keys.map((k) => count(`SELECT COUNT(*) AS n FROM templink.collections c WHERE ${where(FILTERS[k])}`)));
+  const counts = Object.fromEntries(keys.map((k, i) => [k, totals[i]])) as Record<Filter, number>;
 
   const like = `%${q}%`;
-  const rows = all<Collection & { contact_name: string | null }>(
-    `SELECT c.*, ct.name AS contact_name FROM collections c LEFT JOIN contacts ct ON ct.id = c.contact_id
+  const rows = await all<Collection & { contact_name: string | null }>(
+    `SELECT c.*, ct.name AS contact_name FROM templink.collections c LEFT JOIN templink.contacts ct ON ct.id = c.contact_id
      WHERE (${where(FILTERS[f])})
-       ${q ? "AND (c.id LIKE ? OR c.title LIKE ? OR c.uploader_email LIKE ? OR EXISTS (SELECT 1 FROM files fl WHERE fl.collection_id = c.id AND fl.name LIKE ?))" : ""}
+       ${q ? "AND (c.id ILIKE ? OR c.title ILIKE ? OR c.uploader_email ILIKE ? OR EXISTS (SELECT 1 FROM templink.files fl WHERE fl.collection_id = c.id AND fl.name ILIKE ?))" : ""}
      ORDER BY c.created_at DESC LIMIT 200`,
     ...(q ? [like, like, like, like] : []),
   );

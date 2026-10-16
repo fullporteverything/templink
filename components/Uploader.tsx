@@ -45,29 +45,41 @@ function saveRecent(d: Done) {
   }
 }
 
-function putFile(url: string, token: string, file: File, onProgress: (loaded: number) => void, signal: AbortSignal) {
+type UploadTarget = { endpoint: string; apikey: string; token: string; bucket: string; objectName: string };
+
+/** Resumable upload straight to Supabase Storage using a one-time signed token. */
+async function sendFile(
+  file: File,
+  type: string,
+  target: UploadTarget,
+  onProgress: (loaded: number) => void,
+  signal: AbortSignal,
+) {
+  const { Upload } = await import("tus-js-client");
   return new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("x-upload-token", token);
-    xhr.setRequestHeader("content-type", "application/octet-stream");
-    xhr.upload.onprogress = (e) => onProgress(e.loaded);
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
+    const upload = new Upload(file, {
+      endpoint: target.endpoint,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      chunkSize: 6 * 1024 * 1024, // Supabase requires exactly 6 MB chunks
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      headers: { apikey: target.apikey, "x-signature": target.token },
+      metadata: { bucketName: target.bucket, objectName: target.objectName, contentType: type, cacheControl: "3600" },
+      onProgress: (sent) => onProgress(sent),
+      onSuccess: () => {
         onProgress(file.size);
         resolve();
-      } else {
-        let msg = "Upload failed.";
-        try {
-          msg = JSON.parse(xhr.responseText).error || msg;
-        } catch {}
-        reject(new Error(msg));
-      }
-    };
-    xhr.onerror = () => reject(new Error("Network error while uploading."));
-    xhr.onabort = () => reject(new Error("Upload cancelled."));
-    signal.addEventListener("abort", () => xhr.abort());
-    xhr.send(file);
+      },
+      onError: (err) => {
+        const status = (err as { originalResponse?: { getStatus(): number } }).originalResponse?.getStatus();
+        reject(new Error(status === 413 ? `"${file.name}" is too large for storage.` : `Upload of "${file.name}" failed.`));
+      },
+    });
+    signal.addEventListener("abort", () => {
+      void upload.abort(true);
+      reject(new Error("Upload cancelled."));
+    });
+    upload.start();
   });
 }
 
@@ -154,14 +166,17 @@ export default function Uploader({ limits }: { limits: Limits }) {
       if (!res.ok) throw new Error(created.error || "Couldn't start the upload.");
 
       // Upload three files at a time.
-      const queue = files.map((f, i) => ({ picked: f, remote: created.files[i] as { id: string } }));
+      const queue = files.map((f, i) => ({
+        picked: f,
+        remote: created.files[i] as { id: string; type: string; upload: UploadTarget },
+      }));
       const worker = async () => {
         while (queue.length) {
           const job = queue.shift()!;
-          await putFile(
-            `/api/uploads/${created.id}/files/${job.remote.id}`,
-            created.token,
+          await sendFile(
             job.picked.file,
+            job.remote.type,
+            job.remote.upload,
             (loaded) => setProgress((p) => ({ ...p, [job.picked.key]: loaded })),
             ac.signal,
           );

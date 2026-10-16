@@ -3,8 +3,8 @@ import { getSettings } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Terms & abuse" };
 
-export default function Terms() {
-  const s = getSettings();
+export default async function Terms() {
+  const s = await getSettings();
   return (
     <article className="mx-auto max-w-2xl px-4 pt-6 pb-16 text-[15px] leading-relaxed sm:px-6 sm:pt-12">
       <h1 className="text-3xl font-semibold tracking-tight">Terms &amp; abuse policy</h1>

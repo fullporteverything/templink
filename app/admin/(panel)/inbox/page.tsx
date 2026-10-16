@@ -3,7 +3,7 @@ import Link from "next/link";
 import { setMessageStatus, takeDownReported } from "../../actions";
 import { ConfirmButton } from "@/components/admin/forms";
 import { Badge, Empty, PageHeader, Tabs } from "@/components/admin/ui";
-import { all, Message, one } from "@/lib/db";
+import { all, count, Message } from "@/lib/db";
 import { formatDate, timeAgo } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Inbox" };
@@ -12,13 +12,14 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const sp = await searchParams;
   const status = sp.s === "resolved" ? "resolved" : "open";
   const kind = sp.k === "report" || sp.k === "contact" ? sp.k : "";
-  const msgs = all<Message & { link_status: string | null }>(
-    `SELECT m.*, c.status AS link_status FROM messages m LEFT JOIN collections c ON c.id = m.collection_id
+  const msgs = await all<Message & { link_status: string | null }>(
+    `SELECT m.*, c.status AS link_status FROM templink.messages m LEFT JOIN templink.collections c ON c.id = m.collection_id
      WHERE m.status = ? ${kind ? "AND m.kind = ?" : ""} ORDER BY m.created_at DESC LIMIT 200`,
     ...(kind ? [status, kind] : [status]),
   );
   const n = (s: string, k?: string) =>
-    one<{ n: number }>(`SELECT COUNT(*) AS n FROM messages WHERE status = ?${k ? " AND kind = ?" : ""}`, ...(k ? [s, k] : [s]))?.n ?? 0;
+    count(`SELECT COUNT(*) AS n FROM templink.messages WHERE status = ?${k ? " AND kind = ?" : ""}`, ...(k ? [s, k] : [s]));
+  const [openCount, resolvedCount] = await Promise.all([n("open", kind || undefined), n("resolved", kind || undefined)]);
 
   return (
     <>
@@ -30,8 +31,8 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           current={status === "resolved" ? "resolved" : ""}
           keep={{ k: kind || undefined }}
           options={[
-            { value: "", label: "Open", count: n("open", kind || undefined) },
-            { value: "resolved", label: "Resolved", count: n("resolved", kind || undefined) },
+            { value: "", label: "Open", count: openCount },
+            { value: "resolved", label: "Resolved", count: resolvedCount },
           ]}
         />
         <Tabs

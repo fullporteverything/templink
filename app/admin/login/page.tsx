@@ -15,7 +15,7 @@ export default async function LoginPage() {
     <div className="grid min-h-dvh place-items-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-center gap-2.5 font-semibold">
-          <Logo size={26} /> {getSettings().siteName} admin
+          <Logo size={26} /> {(await getSettings()).siteName} admin
         </div>
         <div className="card p-6">
           {configured ? (

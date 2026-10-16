@@ -2,7 +2,7 @@ import "server-only";
 import { clientIp } from "./auth";
 import { hashIp } from "./crypto";
 import { logActivity, upsertContact } from "./crm";
-import { now, one, run } from "./db";
+import { count, now, run } from "./db";
 import { isEmail } from "./format";
 
 /** Store a contact-form message or abuse report, and link it to a CRM contact when an email is given. */
@@ -23,23 +23,22 @@ export async function createMessage(input: {
   if (input.kind === "contact" && !email) return { error: "Add your email so we can reply." };
 
   const ip = hashIp(await clientIp());
-  const recent =
-    one<{ n: number }>("SELECT COUNT(*) AS n FROM messages WHERE ip = ? AND created_at > ?", ip, now() - 3600_000)?.n ?? 0;
+  const recent = await count("SELECT COUNT(*) AS n FROM templink.messages WHERE ip = ? AND created_at > ?", ip, now() - 3600_000);
   if (recent >= 10) return { error: "Too many messages. Try again later." };
 
   let contactId: number | null = null;
   if (email) {
-    const contact = upsertContact(email, { name, source: input.kind === "report" ? "report" : "contact form" });
+    const contact = await upsertContact(email, { name, source: input.kind === "report" ? "report" : "contact form" });
     contactId = contact.id;
-    logActivity(
+    await logActivity(
       contact.id,
       input.kind === "report" ? "report" : "message",
       `${subject ? `${subject}: ` : ""}${body.slice(0, 500)}`,
       input.collectionId ?? null,
     );
   }
-  run(
-    `INSERT INTO messages (kind, name, email, subject, body, collection_id, contact_id, ip, created_at)
+  await run(
+    `INSERT INTO templink.messages (kind, name, email, subject, body, collection_id, contact_id, ip, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     input.kind,
     name || null,

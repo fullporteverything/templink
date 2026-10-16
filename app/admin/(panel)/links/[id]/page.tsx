@@ -13,17 +13,19 @@ export const metadata: Metadata = { title: "Link" };
 
 export default async function LinkDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const c = getCollection(id);
+  const c = await getCollection(id);
   if (!c) notFound();
-  const files = getFiles(id);
   const t = now();
   const live = c.status === "active" && c.expires_at > t;
   const exists = c.status === "active" || c.status === "disabled";
-  const reports = all<Message>("SELECT * FROM messages WHERE kind = 'report' AND collection_id = ? ORDER BY created_at DESC", id);
-  const dls = all<{ created_at: number; user_agent: string | null; file_id: string | null }>(
-    "SELECT created_at, user_agent, file_id FROM downloads WHERE collection_id = ? ORDER BY created_at DESC LIMIT 25",
-    id,
-  );
+  const [files, reports, dls] = await Promise.all([
+    getFiles(id),
+    all<Message>("SELECT * FROM templink.messages WHERE kind = 'report' AND collection_id = ? ORDER BY created_at DESC", id),
+    all<{ created_at: number; user_agent: string | null; file_id: string | null }>(
+      "SELECT created_at, user_agent, file_id FROM templink.downloads WHERE collection_id = ? ORDER BY created_at DESC LIMIT 25",
+      id,
+    ),
+  ]);
   const fileName = new Map(files.map((f) => [f.id, f.name]));
 
   const facts: [string, React.ReactNode][] = [

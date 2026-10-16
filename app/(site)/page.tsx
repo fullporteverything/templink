@@ -3,8 +3,8 @@ import { IconClock, IconLock, IconShield, IconZap } from "@/components/icons";
 import { expiryLabel, formatBytes } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 
-export default function Home() {
-  const s = getSettings();
+export default async function Home() {
+  const s = await getSettings();
   const longest = Math.max(...s.expiryOptionsHours);
   const features = [
     { icon: IconZap, title: "No account", body: "Drop files, get a link. Nobody needs to sign up, you or the recipient." },

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { after } from "next/server";
 import { isUnlocked } from "@/lib/auth";
-import { availability, getCollection, getFiles, inlineSafe } from "@/lib/collections";
+import { availability, getCollection, getFiles, inlineSafe, ZIP_MAX_BYTES } from "@/lib/collections";
 import { run } from "@/lib/db";
 import { fileKind, formatBytes } from "@/lib/format";
 import { FileIcon, IconClock, IconDownload, IconEye } from "@/components/icons";
@@ -20,7 +21,7 @@ const REASONS: Record<string, [string, string]> = {
 
 export default async function SharePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const c = getCollection(id);
+  const c = await getCollection(id);
   const a = availability(c);
 
   if (!a.ok || !c) {
@@ -40,8 +41,8 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
   }
 
   const locked = !!c.password_hash && !(await isUnlocked(id));
-  if (!locked) run("UPDATE collections SET views = views + 1 WHERE id = ?", id);
-  const files = locked ? [] : getFiles(id);
+  if (!locked) after(() => run("UPDATE templink.collections SET views = views + 1 WHERE id = ?", id).catch(() => {}));
+  const files = locked ? [] : await getFiles(id);
   const left = c.max_downloads != null ? c.max_downloads - c.download_count : null;
 
   return (
@@ -119,7 +120,7 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
                 );
               })}
             </ul>
-            {files.length > 1 && (
+            {files.length > 1 && c.total_size <= ZIP_MAX_BYTES && (
               <div className="border-t border-line p-4 sm:p-6">
                 <a href={`/d/${id}/all`} className="btn-primary h-12 w-full text-base" download>
                   <IconDownload size={18} /> Download all as .zip · {formatBytes(c.total_size)}

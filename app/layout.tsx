@@ -13,7 +13,7 @@ const inter = localFont({
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const s = getSettings();
+  const s = await getSettings();
   return {
     title: { default: `${s.siteName} — ${s.tagline}`, template: `%s · ${s.siteName}` },
     description: "Upload files and share them with a temporary link. Links expire automatically.",

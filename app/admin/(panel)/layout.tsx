@@ -4,15 +4,17 @@ import { logout } from "../actions";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { IconLogout, Logo } from "@/components/icons";
 import { requireAdmin } from "@/lib/auth";
-import { one } from "@/lib/db";
+import { count } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 
 export const metadata: Metadata = { title: { default: "Admin", template: "%s · Admin" }, robots: { index: false } };
 
 export default async function PanelLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin();
-  const open = one<{ n: number }>("SELECT COUNT(*) AS n FROM messages WHERE status = 'open'")?.n ?? 0;
-  const s = getSettings();
+  const [open, s] = await Promise.all([
+    count("SELECT COUNT(*) AS n FROM templink.messages WHERE status = 'open'"),
+    getSettings(),
+  ]);
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[232px_1fr]">

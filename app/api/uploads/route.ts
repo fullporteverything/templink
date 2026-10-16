@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import fs from "node:fs";
+import { after } from "next/server";
 import { clientIp } from "@/lib/auth";
-import { collectionDir, sanitizeFilename, sweepExpired } from "@/lib/collections";
+import { objectPath, sanitizeFilename, sweepExpired } from "@/lib/collections";
 import { hashIp, hashPassword, randomId, randomToken } from "@/lib/crypto";
 import { isBlockedEmail } from "@/lib/crm";
-import { now, one, run, tx } from "@/lib/db";
+import { count, now, run, tx } from "@/lib/db";
 import { isEmail } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
+import { uploadTarget } from "@/lib/storage";
 
 type Body = {
   files?: { name?: unknown; size?: unknown; type?: unknown }[];
@@ -21,10 +22,13 @@ type Body = {
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
-/** Create a link and reserve its files. The client then PUTs each file's bytes. */
+/**
+ * Create a link and reserve its files. The response carries a signed upload target per file;
+ * the browser sends the bytes straight to Supabase Storage, then calls /complete.
+ */
 export async function POST(req: Request) {
-  sweepExpired();
-  const settings = getSettings();
+  after(() => sweepExpired().catch(() => {}));
+  const settings = await getSettings();
   if (!settings.uploadsEnabled) return bad("Uploads are paused right now. Try again later.", 503);
 
   let body: Body;
@@ -54,7 +58,7 @@ export async function POST(req: Request) {
 
   const email = str(body.email, 200).toLowerCase();
   if (email && !isEmail(email)) return bad("That email address doesn't look right.");
-  if (email && isBlockedEmail(email)) return bad("This address can't upload files.", 403);
+  if (email && (await isBlockedEmail(email))) return bad("This address can't upload files.", 403);
 
   let maxDownloads: number | null = null;
   if (body.maxDownloads !== undefined && body.maxDownloads !== null && body.maxDownloads !== "") {
@@ -64,9 +68,11 @@ export async function POST(req: Request) {
 
   const password = str(body.password, 200);
   const ip = hashIp(await clientIp());
-  const recent =
-    one<{ n: number }>("SELECT COUNT(*) AS n FROM collections WHERE uploader_ip = ? AND created_at > ?", ip, now() - 86_400_000)
-      ?.n ?? 0;
+  const recent = await count(
+    "SELECT COUNT(*) AS n FROM templink.collections WHERE uploader_ip = ? AND created_at > ?",
+    ip,
+    now() - 86_400_000,
+  );
   if (recent >= settings.uploadsPerIpPerDay) return bad("Daily upload limit reached. Try again tomorrow.", 429);
 
   const id = randomId(10);
@@ -74,9 +80,9 @@ export async function POST(req: Request) {
   const t = now();
   const totalSize = parsed.reduce((s, f) => s + f.size, 0);
 
-  tx(() => {
-    run(
-      `INSERT INTO collections (id, status, title, message, password_hash, max_downloads, file_count, total_size,
+  await tx(async (q) => {
+    await q.run(
+      `INSERT INTO templink.collections (id, status, title, message, password_hash, max_downloads, file_count, total_size,
          uploader_email, uploader_ip, manage_token, created_at, expires_at)
        VALUES (?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
@@ -93,8 +99,8 @@ export async function POST(req: Request) {
       t + hours * 3600_000,
     );
     for (const f of parsed) {
-      run(
-        "INSERT INTO files (id, collection_id, name, size, mime, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      await q.run(
+        "INSERT INTO templink.files (id, collection_id, name, size, mime, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         f.id,
         id,
         f.name,
@@ -104,7 +110,19 @@ export async function POST(req: Request) {
       );
     }
   });
-  fs.mkdirSync(collectionDir(id), { recursive: true });
 
-  return NextResponse.json({ id, token, files: parsed.map(({ id, name, size }) => ({ id, name, size })) });
+  let targets;
+  try {
+    targets = await Promise.all(parsed.map((f) => uploadTarget(objectPath(id, f.id))));
+  } catch (e) {
+    console.error("[templink] storage signing failed", e);
+    await run("DELETE FROM templink.collections WHERE id = ?", id).catch(() => {});
+    return bad("Storage is unavailable right now. Try again in a moment.", 503);
+  }
+
+  return NextResponse.json({
+    id,
+    token,
+    files: parsed.map((f, i) => ({ id: f.id, name: f.name, size: f.size, type: f.type, upload: targets[i] })),
+  });
 }

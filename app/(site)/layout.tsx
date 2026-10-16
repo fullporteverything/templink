@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Logo } from "@/components/icons";
 import { getSettings } from "@/lib/settings";
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
-  const s = getSettings();
+export default async function SiteLayout({ children }: { children: React.ReactNode }) {
+  const s = await getSettings();
   return (
     <div className="flex min-h-dvh flex-col">
       {s.announcement && (

@@ -25,7 +25,7 @@ export default async function ContactsPage({
   const conds: string[] = [];
   const params: string[] = [];
   if (q) {
-    conds.push("(c.email LIKE ? OR c.name LIKE ? OR c.company LIKE ?)");
+    conds.push("(c.email ILIKE ? OR c.name ILIKE ? OR c.company ILIKE ?)");
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
   if (status && view === "table") {
@@ -33,22 +33,27 @@ export default async function ContactsPage({
     params.push(status);
   }
   if (tag) {
-    conds.push("(',' || c.tags || ',') LIKE ?");
+    conds.push("(',' || c.tags || ',') ILIKE ?");
     params.push(`%,${tag},%`);
   }
-  const rows = all<Row>(
-    `SELECT c.*, COUNT(col.id) AS links, SUM(col.total_size) AS bytes
-     FROM contacts c LEFT JOIN collections col ON col.contact_id = c.id AND col.status != 'uploading'
+  const rows = await all<Row>(
+    `SELECT c.*, COUNT(col.id) AS links, SUM(col.total_size)::float8 AS bytes
+     FROM templink.contacts c LEFT JOIN templink.collections col ON col.contact_id = c.id AND col.status != 'uploading'
      ${conds.length ? `WHERE ${conds.join(" AND ")}` : ""}
      GROUP BY c.id ORDER BY COALESCE(c.last_seen_at, c.updated_at) DESC LIMIT 500`,
     ...params,
   );
 
   const statusCounts = Object.fromEntries(
-    all<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM contacts GROUP BY status").map((r) => [r.status, r.n]),
+    (await all<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM templink.contacts GROUP BY status")).map((r) => [
+      r.status,
+      r.n,
+    ]),
   ) as Record<string, number>;
   const total = Object.values(statusCounts).reduce((s, n) => s + n, 0);
-  const allTags = Array.from(new Set(all<{ tags: string }>("SELECT tags FROM contacts WHERE tags != ''").flatMap((r) => parseTags(r.tags)))).sort();
+  const allTags = Array.from(
+    new Set((await all<{ tags: string }>("SELECT tags FROM templink.contacts WHERE tags != ''")).flatMap((r) => parseTags(r.tags))),
+  ).sort();
   const keep = { q, tag, view: view === "board" ? "board" : undefined };
 
   return (

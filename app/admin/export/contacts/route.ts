@@ -10,9 +10,9 @@ const cell = (v: unknown) => {
 
 export async function GET() {
   if (!(await isAdmin())) return new Response("Unauthorized", { status: 401 });
-  const rows = all<Contact & { links: number }>(
-    `SELECT c.*, (SELECT COUNT(*) FROM collections col WHERE col.contact_id = c.id AND col.status != 'uploading') AS links
-     FROM contacts c ORDER BY c.created_at`,
+  const rows = await all<Contact & { links: number }>(
+    `SELECT c.*, (SELECT COUNT(*) FROM templink.collections col WHERE col.contact_id = c.id AND col.status != 'uploading') AS links
+     FROM templink.contacts c ORDER BY c.created_at`,
   );
   const header = ["email", "name", "company", "phone", "status", "tags", "value_usd", "source", "links", "created_at", "last_seen_at"];
   const lines = [header.join(",")];

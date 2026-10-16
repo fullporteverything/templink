@@ -16,7 +16,7 @@ export default async function ManagePage({
 }) {
   const { id } = await params;
   const { k } = await searchParams;
-  const c = getCollection(id);
+  const c = await getCollection(id);
   if (!c || !k || !safeEqual(k, c.manage_token)) {
     return (
       <div className="mx-auto max-w-md px-4 py-24 text-center sm:px-6">
