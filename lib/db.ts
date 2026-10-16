@@ -107,6 +107,16 @@ CREATE TABLE IF NOT EXISTS templink.hits (
 );
 CREATE INDEX IF NOT EXISTS hits_key ON templink.hits (key, created_at);
 
+-- v2: coarse location (city level, from Vercel's edge headers) for the live globe and ticker.
+ALTER TABLE templink.collections ADD COLUMN IF NOT EXISTS geo_city text;
+ALTER TABLE templink.collections ADD COLUMN IF NOT EXISTS geo_country text;
+ALTER TABLE templink.collections ADD COLUMN IF NOT EXISTS geo_lat double precision;
+ALTER TABLE templink.collections ADD COLUMN IF NOT EXISTS geo_lon double precision;
+ALTER TABLE templink.downloads ADD COLUMN IF NOT EXISTS geo_city text;
+ALTER TABLE templink.downloads ADD COLUMN IF NOT EXISTS geo_country text;
+ALTER TABLE templink.downloads ADD COLUMN IF NOT EXISTS geo_lat double precision;
+ALTER TABLE templink.downloads ADD COLUMN IF NOT EXISTS geo_lon double precision;
+
 -- The app connects to Postgres directly. Keep these tables away from Supabase's public API roles.
 DO $$
 DECLARE t text;
@@ -146,13 +156,25 @@ function client(): Sql {
   return g.__tlSql;
 }
 
-/** Create the schema on first use, so a fresh Supabase project needs no manual setup. */
+/** Bump when SCHEMA_SQL changes; every statement in it must stay idempotent. */
+const SCHEMA_VERSION = "2";
+
+/** Create or upgrade the schema on first use, so a Supabase project needs no manual setup. */
 function ready(): Promise<void> {
   if (!g.__tlReady) {
     g.__tlReady = (async () => {
       const sql = client();
-      const [row] = await sql.unsafe(`SELECT to_regclass('templink.hits') AS t`);
-      if (!row?.t) await sql.unsafe(SCHEMA_SQL);
+      const [row] = await sql.unsafe(
+        `SELECT CASE WHEN to_regclass('templink.settings') IS NULL THEN NULL
+                ELSE (SELECT value FROM templink.settings WHERE key = '_schema') END AS v`,
+      );
+      if (row?.v === JSON.stringify(SCHEMA_VERSION)) return;
+      await sql.unsafe(SCHEMA_SQL);
+      await sql.unsafe(
+        `INSERT INTO templink.settings (key, value) VALUES ('_schema', $1)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+        [JSON.stringify(SCHEMA_VERSION)],
+      );
     })().catch((e) => {
       g.__tlReady = undefined;
       throw e;

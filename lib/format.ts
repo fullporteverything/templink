@@ -3,7 +3,7 @@ export function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   const v = bytes / 1024 ** i;
-  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")} ${units[i]}`;
 }
 
 export function formatDuration(ms: number): string {

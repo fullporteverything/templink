@@ -146,7 +146,7 @@ export function SettingsForm({ settings }: { settings: Settings }) {
             <input name="siteName" className="input" defaultValue={settings.siteName} />
           </div>
           <div>
-            <label className="label">Headline</label>
+            <label className="label">Headline (use | to split into two tones)</label>
             <input name="tagline" className="input" defaultValue={settings.tagline} />
           </div>
           <div className="sm:col-span-2">

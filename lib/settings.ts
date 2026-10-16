@@ -16,7 +16,8 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   siteName: process.env.SITE_NAME || "Templink",
-  tagline: "Send files with a link that expires.",
+  // "|" splits the homepage headline into a dark and a light line.
+  tagline: "Send files.|Gone on schedule.",
   // Supabase's free plan caps uploads at 50 MB per file; raise this after raising the
   // project's global file size limit (Pro plan) in Storage settings.
   maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB) || 50,
@@ -54,3 +55,12 @@ export async function saveSettings(patch: Partial<Settings>) {
     );
   }
 }
+
+/** Split the headline at "|" into its two tones. */
+export function headlineParts(tagline: string): [string, string] {
+  const [lead, ...rest] = tagline.split("|");
+  return [lead.trim(), rest.join(" ").trim()];
+}
+
+/** The headline as plain text, for titles and meta tags. */
+export const plainTagline = (tagline: string) => headlineParts(tagline).filter(Boolean).join(" ");

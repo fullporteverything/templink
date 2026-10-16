@@ -6,6 +6,7 @@ import { hashIp, hashPassword, randomId, randomToken } from "@/lib/crypto";
 import { isBlockedEmail } from "@/lib/crm";
 import { count, now, run, tx } from "@/lib/db";
 import { isEmail } from "@/lib/format";
+import { requestGeo } from "@/lib/geo";
 import { getSettings } from "@/lib/settings";
 import { uploadTarget } from "@/lib/storage";
 
@@ -79,12 +80,13 @@ export async function POST(req: Request) {
   const token = randomToken();
   const t = now();
   const totalSize = parsed.reduce((s, f) => s + f.size, 0);
+  const geo = await requestGeo();
 
   await tx(async (q) => {
     await q.run(
       `INSERT INTO templink.collections (id, status, title, message, password_hash, max_downloads, file_count, total_size,
-         uploader_email, uploader_ip, manage_token, created_at, expires_at)
-       VALUES (?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         uploader_email, uploader_ip, manage_token, created_at, expires_at, geo_city, geo_country, geo_lat, geo_lon)
+       VALUES (?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       str(body.title, 120) || null,
       str(body.message, 1000) || null,
@@ -97,6 +99,10 @@ export async function POST(req: Request) {
       token,
       t,
       t + hours * 3600_000,
+      geo.city,
+      geo.country,
+      geo.lat,
+      geo.lon,
     );
     for (const f of parsed) {
       await q.run(

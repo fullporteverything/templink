@@ -29,11 +29,13 @@ All tables live in their own `templink` schema. They have RLS enabled and no acc
 - Optional extras per link: a password, a download limit, a title and a message for the recipient.
 - The share page shows image, video and audio previews, a PDF preview, per-file downloads and **Download all (.zip)**.
 - Uploaders get a private *manage link* to delete the files early. Their recent links are remembered on the device.
-- Every link has a **Report abuse** button. There's also a contact form and a terms page. Light and dark mode, and mobile layouts.
+- Every link has a **Report abuse** button. There's also a contact form and a terms page.
+- **Live globe:** the homepage shows a draggable dot-matrix globe with arcs for real recent transfers (upload city → download city), plus a live-transfers ticker and live counters. Locations come from Vercel's edge headers, are rounded to city level, and the public feed never includes names, links or emails. With no activity yet, the globe shows ambient routes.
+- Light/dark/system theme toggle, page-wide drag-and-drop, upload speed and time remaining, a QR code for every link, an image gallery on share pages, and mobile layouts.
 
 **Admin center** (`/admin`)
 
-- **Dashboard:** live links, storage in use, downloads, contacts and pipeline value, plus 14-day charts and items that need attention.
+- **Dashboard:** live links, storage in use, downloads, contacts and pipeline value, a live activity globe and feed, 14-day charts and items that need attention.
 - **Links & files:** search and filter links. Disable, re-enable, delete or extend any link, and see its download log and reports.
 - **CRM:**
   - Contacts are created automatically from uploaders who leave an email, contact-form senders and abuse reporters.
@@ -41,7 +43,7 @@ All tables live in their own `templink` schema. They have RLS enabled and no acc
   - There's a table view and a pipeline board, plus CSV export.
   - **Blocked** contacts can't upload.
 - **Inbox:** contact messages and abuse reports, with reply, resolve and one-click **take down link**.
-- **Settings:** site name, headline, announcement bar, limits, expiry options and an uploads on/off switch.
+- **Settings:** site name, two-tone headline (split with `|`), announcement bar, limits, expiry options and an uploads on/off switch.
 
 **Housekeeping & security**
 

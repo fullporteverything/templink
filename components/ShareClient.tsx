@@ -15,6 +15,25 @@ export function Countdown({ until }: { until: number }) {
   return <span suppressHydrationWarning>{now == null ? "…" : formatDuration(until - now)}</span>;
 }
 
+/** Thin bar showing how much of the link's lifetime is left. */
+export function ExpiryBar({ from, until }: { from: number; until: number }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const left = now == null ? 1 : Math.max(0, Math.min(1, (until - now) / Math.max(1, until - from)));
+  return (
+    <div className="mt-5 h-1 max-w-sm overflow-hidden rounded-full bg-line" aria-hidden>
+      <div
+        className={`h-full rounded-full transition-[width] duration-700 ${left < 0.15 ? "bg-warn" : "bg-accent"}`}
+        style={{ width: `${left * 100}%` }}
+      />
+    </div>
+  );
+}
+
 export function PasswordGate({ id }: { id: string }) {
   const router = useRouter();
   const [password, setPassword] = useState("");

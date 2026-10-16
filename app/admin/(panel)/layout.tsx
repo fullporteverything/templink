@@ -3,6 +3,7 @@ import Link from "next/link";
 import { logout } from "../actions";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { IconLogout, Logo } from "@/components/icons";
+import ThemeToggle from "@/components/ThemeToggle";
 import { requireAdmin } from "@/lib/auth";
 import { count } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
@@ -24,17 +25,23 @@ export default async function PanelLayout({ children }: { children: React.ReactN
             <Logo />
             <span className="truncate">{s.siteName}</span>
           </Link>
-          <form action={logout} className="lg:hidden">
-            <button className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Sign out">
-              <IconLogout size={17} />
-            </button>
-          </form>
+          <div className="flex items-center gap-1 lg:hidden">
+            <ThemeToggle />
+            <form action={logout}>
+              <button className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Sign out">
+                <IconLogout size={17} />
+              </button>
+            </form>
+          </div>
         </div>
         <AdminNav openCount={open} />
         <div className="absolute inset-x-0 bottom-0 hidden space-y-1 p-3 lg:block">
-          <Link href="/" target="_blank" className="block rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-fg">
-            View site ↗
-          </Link>
+          <div className="flex items-center justify-between px-1">
+            <Link href="/" target="_blank" className="rounded-lg px-2 py-2 text-sm text-muted hover:bg-surface-2 hover:text-fg">
+              View site ↗
+            </Link>
+            <ThemeToggle />
+          </div>
           <form action={logout}>
             <button className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-fg">
               <IconLogout size={17} /> Sign out

@@ -18,6 +18,10 @@ export type Collection = {
   created_at: number;
   expires_at: number;
   deleted_at: number | null;
+  geo_city: string | null;
+  geo_country: string | null;
+  geo_lat: number | null;
+  geo_lon: number | null;
 };
 
 export type FileRow = {

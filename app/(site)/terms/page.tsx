@@ -22,6 +22,12 @@ export default async function Terms() {
         Files are deleted when their link expires, reaches its download limit, or is deleted by the uploader or by us.
         Deleted files can&apos;t be recovered.
       </p>
+      <h2 className="mt-8 text-lg font-semibold">Privacy</h2>
+      <p className="mt-2 text-muted">
+        We keep the approximate city of each upload and download (never a precise location) and a one-way hash of the IP
+        address for rate limiting. The homepage shows anonymous activity: file type, size, city and time. It never
+        shows file names, links or email addresses.
+      </p>
       <h2 className="mt-8 text-lg font-semibold">Reporting</h2>
       <p className="mt-2 text-muted">
         Every share page has a <strong className="text-fg">Report abuse</strong> link. Reports go straight to our

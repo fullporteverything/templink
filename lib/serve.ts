@@ -3,6 +3,7 @@ import { isUnlocked } from "./auth";
 import { availability, getCollection } from "./collections";
 import { hashIp } from "./crypto";
 import { Collection, now, tx } from "./db";
+import { requestGeo } from "./geo";
 
 export type Gate = { ok: true; c: Collection } | { ok: false; res: Response };
 
@@ -22,6 +23,7 @@ export async function gate(id: string): Promise<Gate> {
  * so two people racing for the last download can't both get it.
  */
 export async function recordDownload(collectionId: string, fileId: string | null, ip: string, ua: string | null) {
+  const geo = await requestGeo();
   return tx(async (q) => {
     const updated = await q.run(
       `UPDATE templink.collections SET download_count = download_count + 1
@@ -31,12 +33,17 @@ export async function recordDownload(collectionId: string, fileId: string | null
     if (!updated) return false;
     if (fileId) await q.run("UPDATE templink.files SET downloads = downloads + 1 WHERE id = ?", fileId);
     await q.run(
-      "INSERT INTO templink.downloads (collection_id, file_id, ip, user_agent, created_at) VALUES (?, ?, ?, ?, ?)",
+      `INSERT INTO templink.downloads (collection_id, file_id, ip, user_agent, created_at, geo_city, geo_country, geo_lat, geo_lon)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       collectionId,
       fileId,
       hashIp(ip),
       ua?.slice(0, 300) ?? null,
       now(),
+      geo.city,
+      geo.country,
+      geo.lat,
+      geo.lon,
     );
     return true;
   });
