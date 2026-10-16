@@ -46,7 +46,7 @@ function readColors(el: HTMLElement) {
 
 /**
  * Dot-matrix globe drawn on a 2D canvas. Shows `arcs` as animated flights (falls back to
- * ambient routes), pulses `points`, rotates slowly, and can be dragged.
+ * ambient routes), pulses `points`, rotates slowly, and can be dragged. Always animates, by design.
  */
 export default function Globe({
   arcs = [],
@@ -69,7 +69,6 @@ export default function Globe({
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     const dots = landDots().map(toVec);
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     let colors = readColors(canvas);
     let w = 0;
@@ -255,30 +254,13 @@ export default function Globe({
     };
 
     const start = () => {
-      if (!raf && !reduce) raf = requestAnimationFrame(frame);
-    };
-
-    const staticFrame = () => {
-      // Reduced motion: one still frame with a handful of complete routes.
-      flights = [];
-      const pool = dataRef.current.arcs.length ? dataRef.current.arcs : AMBIENT;
-      pool.slice(0, 6).forEach((arc, i) => {
-        const a = toVec(arc.from);
-        const b = toVec(arc.to);
-        const omega = Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])));
-        if (omega > 0.01) flights.push({ a, b, omega, lift: 0.08 + 0.32 * (omega / Math.PI), born: -1600 - i, life: 3000 });
-      });
-      draw(0);
+      if (!raf) raf = requestAnimationFrame(frame);
     };
 
     resize();
-    if (reduce) staticFrame();
-    else start();
+    start();
 
-    const ro = new ResizeObserver(() => {
-      resize();
-      if (reduce) staticFrame();
-    });
+    const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
     const io = new IntersectionObserver(([e]) => {
@@ -294,7 +276,6 @@ export default function Globe({
 
     const onTheme = () => {
       colors = readColors(canvas);
-      if (reduce) staticFrame();
     };
     const mo = new MutationObserver(onTheme);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -317,7 +298,6 @@ export default function Globe({
       yaw += dx * k;
       pitch = Math.max(-1.1, Math.min(1.1, pitch + dy * k));
       velocity = dx * k;
-      if (reduce) draw(0);
     };
     const up = () => {
       dragging = false;

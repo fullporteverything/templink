@@ -75,10 +75,6 @@ function useCountUp(target: number, run: boolean, ms = 1400) {
   const [v, setV] = useState(0);
   useEffect(() => {
     if (!run) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setV(target);
-      return;
-    }
     let raf = 0;
     const t0 = performance.now();
     const from = 0;

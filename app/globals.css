@@ -240,12 +240,3 @@ body {
 .live-dot {
   animation: blink 1.6s ease-in-out infinite;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .rise,
-  .ping-soft,
-  .marquee,
-  .live-dot {
-    animation: none;
-  }
-}
