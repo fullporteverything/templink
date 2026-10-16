@@ -18,38 +18,52 @@ function apply(mode: Mode) {
   }
 }
 
-const RIPPLE_MS = 820;
-const EASE = "cubic-bezier(0.22, 0.9, 0.24, 1)";
+const RIPPLE_MS = 850;
+// easeOutCubic, used for both the clip and the rim so they stay locked together.
+const EASE_CSS = "cubic-bezier(0.33, 1, 0.68, 1)";
+const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
-/** A glassy ring that rides the edge of the theme ripple. */
-function glassRim(x: number, y: number, r: number) {
+/**
+ * The glassy wave front. It's its own view-transition layer (painted above the root snapshot,
+ * so the circular clip doesn't cut it) and is redrawn every frame as a ring at the wave's edge.
+ */
+function makeRim(x: number, y: number, r: number) {
   const rim = document.createElement("div");
   rim.setAttribute("aria-hidden", "true");
   Object.assign(rim.style, {
     position: "fixed",
-    left: `${x}px`,
-    top: `${y}px`,
-    width: "0px",
-    height: "0px",
-    borderRadius: "50%",
+    inset: "0",
     pointerEvents: "none",
     zIndex: "2147483647",
-    transform: "translate(-50%, -50%)",
-    border: "1.5px solid color-mix(in oklab, var(--accent) 55%, white)",
-    boxShadow:
-      "0 0 28px 6px color-mix(in oklab, var(--accent) 35%, transparent), inset 0 0 22px 2px color-mix(in oklab, white 30%, transparent)",
-    backdropFilter: "blur(2px) saturate(1.4)",
-  } satisfies Partial<CSSStyleDeclaration>);
+    viewTransitionName: "theme-rim",
+  });
   document.body.appendChild(rim);
-  const anim = rim.animate(
-    [
-      { width: "0px", height: "0px", opacity: 1 },
-      { width: `${r * 2}px`, height: `${r * 2}px`, opacity: 0.9, offset: 0.75 },
-      { width: `${r * 2}px`, height: `${r * 2}px`, opacity: 0 },
-    ],
-    { duration: RIPPLE_MS, easing: EASE },
-  );
-  anim.onfinish = anim.oncancel = () => rim.remove();
+
+  let raf = 0;
+  const t0 = performance.now();
+  const frame = (now: number) => {
+    const p = Math.min(1, (now - t0) / RIPPLE_MS);
+    const R = r * ease(p);
+    const fade = p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1;
+    const glow = "color-mix(in oklab, var(--accent) 45%, transparent)";
+    const haze = "color-mix(in oklab, var(--accent) 14%, transparent)";
+    rim.style.opacity = String(fade);
+    rim.style.background = `radial-gradient(circle at ${x}px ${y}px,
+      transparent ${Math.max(0, R - 70)}px,
+      ${haze} ${Math.max(0, R - 26)}px,
+      ${glow} ${Math.max(0, R - 4)}px,
+      rgba(255,255,255,0.95) ${Math.max(0, R - 1)}px,
+      ${glow} ${R + 2}px,
+      transparent ${R + 26}px)`;
+    if (p < 1) raf = requestAnimationFrame(frame);
+  };
+  return {
+    start: () => (raf = requestAnimationFrame(frame)),
+    remove: () => {
+      cancelAnimationFrame(raf);
+      rim.remove();
+    },
+  };
 }
 
 export default function ThemeToggle({ className = "" }: { className?: string }) {
@@ -70,7 +84,9 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     };
 
     // Ripple the new theme out from the button, poured across the window (View Transitions API).
-    const doc = document as Document & { startViewTransition?: (cb: () => void) => { ready: Promise<void> } };
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> };
+    };
     if (!doc.startViewTransition) return swap();
 
     const box = e.currentTarget.getBoundingClientRect();
@@ -78,16 +94,18 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     const y = box.top + box.height / 2;
     const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
 
+    const rim = makeRim(x, y, r);
     const t = doc.startViewTransition(swap);
     t.ready
       .then(() => {
         document.documentElement.animate(
           { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: RIPPLE_MS, easing: EASE, pseudoElement: "::view-transition-new(root)" },
+          { duration: RIPPLE_MS, easing: EASE_CSS, pseudoElement: "::view-transition-new(root)" },
         );
-        glassRim(x, y, r);
+        rim.start();
       })
-      .catch(() => {});
+      .catch(rim.remove);
+    t.finished.then(rim.remove, rim.remove);
   }
 
   return (
