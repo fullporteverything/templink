@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --surface-2: #efefeb;
+  --line: #e2e2dc;
+  --fg: #141414;
+  --muted: #5e5e5a;
+  --faint: #9a9a94;
+  --accent: #3d4cf5;
+  --accent-fg: #ffffff;
+  --accent-soft: #e8eaff;
+  --ok: #138a4a;
+  --warn: #b26b00;
+  --bad: #d22f3c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0e0f11;
+    --surface: #16171a;
+    --surface-2: #1e1f23;
+    --line: #2a2b30;
+    --fg: #f1f1ef;
+    --muted: #a4a4a0;
+    --faint: #6c6c68;
+    --accent: #7380ff;
+    --accent-fg: #0b0c1e;
+    --accent-soft: #1d2045;
+    --ok: #3ccb7f;
+    --warn: #f0a63a;
+    --bad: #ff6470;
+  }
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+@layer components {
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 h-10 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer;
+  }
+  .btn-primary {
+    @apply bg-accent text-accent-fg hover:opacity-90;
+  }
+  .btn-ghost {
+    @apply border border-line bg-surface text-fg hover:bg-surface-2;
+  }
+  .btn-danger {
+    @apply border border-line bg-surface text-bad hover:bg-bad hover:text-white hover:border-bad;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-xs rounded-lg;
+  }
+  .input {
+    @apply w-full h-10 rounded-xl border border-line bg-surface px-3 text-sm text-fg placeholder:text-faint outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15;
+  }
+  textarea.input {
+    @apply h-auto py-2.5 leading-relaxed;
+  }
+  .label {
+    @apply block text-xs font-medium text-muted mb-1.5;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border border-line bg-surface-2 text-muted;
+  }
+  .table {
+    @apply w-full text-sm;
+  }
+  .table th {
+    @apply text-left font-medium text-xs text-muted px-4 py-2.5 border-b border-line whitespace-nowrap;
+  }
+  .table td {
+    @apply px-4 py-3 border-b border-line align-middle;
+  }
+  .table tr:last-child td {
+    @apply border-b-0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
